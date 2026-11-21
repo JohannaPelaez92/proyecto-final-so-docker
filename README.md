@@ -127,7 +127,7 @@ En Prometheus, entra a Status y luego a Target health. Deben aparecer seis targe
 sum by (backend) (flask_http_request_total)
 ```
 
-En Grafana ya está cargado el dashboard "Proyecto Final: Infraestructura" (menú Dashboards), sin necesidad de importar nada. Muestra el número de targets arriba, las peticiones por segundo de Nginx, las conexiones activas y las respuestas 5xx, además de las gráficas de peticiones por segundo y latencia p95 por backend, y de CPU, memoria y tráfico de red de cada contenedor. Sin tráfico, los paneles de peticiones y latencia aparecen vacíos, porque se calculan sobre las peticiones recientes. Genera carga y se llenan.
+En Grafana ya está cargado el dashboard "Proyecto Final: Infraestructura" (menú Dashboards), sin necesidad de importar nada. Muestra el número de targets arriba, las peticiones por segundo de Nginx, las conexiones activas y las respuestas 5xx, además de las gráficas de peticiones por segundo y latencia p95 por backend, y de CPU, memoria, tráfico de red y lectura y escritura de disco de cada contenedor. Sin tráfico, los paneles de peticiones y latencia aparecen vacíos, porque se calculan sobre las peticiones recientes. Genera carga y se llenan.
 
 ## Pruebas de carga
 
