@@ -59,7 +59,9 @@ El proyecto se desarrolló y probó en macOS con Docker Desktop.
 │       ├── provisioning/       # fuente de datos y proveedor de dashboards
 │       └── dashboards/         # dashboard en JSON, cargado al arrancar
 └── loadtest/
-    └── prueba-carga.js         # script de k6
+    ├── prueba-carga.js         # prueba 1: carga básica (k6)
+    ├── prueba-limite.js        # prueba 2: cerca del límite (k6)
+    └── prueba-sobrecarga.js    # prueba 3: sobrecarga (k6)
 ```
 
 ## Cómo levantar la infraestructura
@@ -137,13 +139,25 @@ Las pruebas se hacen desde la máquina anfitriona con k6. En macOS se instala co
 brew install k6
 ```
 
-Con la infraestructura arriba y el dashboard de Grafana abierto, ejecuta:
+Hay tres scripts en `loadtest/`, de menor a mayor exigencia:
+
+| Script                | Qué hace                                                                                  | Duración  |
+|-----------------------|-------------------------------------------------------------------------------------------|-----------|
+| `prueba-carga.js`     | Sube hasta 50 usuarios virtuales que piden la página principal, con una pausa de 0,2 s    | 1 min 20 s |
+| `prueba-limite.js`    | Mantiene 45 peticiones por segundo a `/slow?ms=500`, cerca de la capacidad teórica        | 2 min 10 s |
+| `prueba-sobrecarga.js`| Mantiene 100 peticiones por segundo a `/slow?ms=500`, más del doble de la capacidad       | 1 min 40 s |
+
+La ruta `/slow?ms=500` mantiene ocupado un hilo del backend durante 500 ms. Con 3 backends de 8 hilos cada uno, la capacidad teórica es 3 x 8 / 0,5 s = 48 peticiones por segundo, y eso permite saber de antemano dónde está el límite. Las pruebas 2 y 3 fijan cuántas peticiones por segundo llegan, no cuántos usuarios hay. En la prueba 3 se espera que la latencia suba mucho, que el umbral de latencia de k6 se marque como superado y que k6 deje de enviar algunas peticiones al quedarse sin usuarios virtuales (aparece como `dropped_iterations`). Eso forma parte del experimento.
+
+Con la infraestructura arriba y el dashboard de Grafana abierto, ejecuta cada una:
 
 ```
 k6 run loadtest/prueba-carga.js
+k6 run loadtest/prueba-limite.js
+k6 run loadtest/prueba-sobrecarga.js
 ```
 
-El script sube de 0 a 20 usuarios virtuales en 20 segundos, de 20 a 50 en los 40 siguientes y baja a 0 en 20 segundos, con un total de un minuto y 20 segundos. Cada usuario pide la página principal, comprueba que la respuesta sea 200 y espera 0,2 segundos. Al terminar, k6 imprime un resumen con el total de peticiones, el porcentaje de fallos y los tiempos de respuesta. Mientras corre, el dashboard muestra cómo suben las peticiones por segundo de los tres backends, la latencia y el consumo de CPU y de red.
+Entre una prueba y otra, espera a que las conexiones activas de Nginx vuelvan a 1 o 2, para que la siguiente no arranque con la cola de la anterior. Al terminar, k6 imprime un resumen con el total de peticiones, el porcentaje de fallos y los tiempos de respuesta. Con `--quiet` se omiten las líneas de avance y queda solo el resumen.
 
 ## Persistencia de datos
 
@@ -163,6 +177,10 @@ Después de reiniciar, las gráficas de Prometheus conservan el historial anteri
 - El puerto 8088 de Nginx, que expone `stub_status`, no se publica hacia el equipo. Solo el exportador lo lee, dentro de la red de Docker.
 - Prometheus consulta cada backend directamente y no a través de Nginx, porque el balanceador mandaría cada visita a `/metrics` a un backend distinto y las cifras quedarían mezcladas.
 - cAdvisor necesita `privileged: true` para leer la información de los contenedores desde el sistema.
+
+## Limitaciones conocidas
+
+Durante la prueba de sobrecarga, Prometheus no logra leer las métricas de los tres backends durante poco más de un minuto (`up` cae a 0), y sus gráficas en Grafana quedan con un hueco. En ese lapso, el tiempo que tarda cada lectura (`scrape_duration_seconds`) sube de milisegundos hasta agotar el límite de espera de 5 segundos. La explicación más probable es que los 8 hilos de cada backend están ocupados con peticiones y no hay uno libre para atender `/metrics`, que viaja por el mismo camino que el tráfico. Nginx y cAdvisor siguen reportando con normalidad. Una mejora posible es servir las métricas de los backends por un puerto aparte.
 
 ## Apagar
 
